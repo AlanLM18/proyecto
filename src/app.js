@@ -10,7 +10,7 @@ app.use('/api/libros', require('./routes/libros'));
 app.use('/api/database', require('./routes/database'));
 
 // 404 para rutas inexistentes (mismo esquema de respuesta)
-app.use((req, res) => error(res, 404, `Ruta no encontrada: ${req.method} ${req.originalUrl}`));
+app.use((req, res) => error(res, 404, `Ruta no encontrada (v2): ${req.method} ${req.originalUrl}`));
 
 // Manejo global de errores (JSON mal formado, errores inesperados, etc.)
 app.use((err, req, res, next) => {
