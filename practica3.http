@@ -1,0 +1,58 @@
+@host = http://localhost:8080
+
+### 1. GET categorías
+GET {{host}}/api/categorias
+
+### 2. POST categoría
+POST {{host}}/api/categorias
+Content-Type: application/json
+
+{ "nombre": "Ciencia ficción" }
+
+### 3. GET autores
+GET {{host}}/api/autores
+
+### 4. POST autor
+POST {{host}}/api/autores
+Content-Type: application/json
+
+{ "nombre": "Isaac Asimov", "nacionalidad": "Estadounidense" }
+
+### 5. GET libros
+GET {{host}}/api/libros
+
+### 6. GET libro por id
+GET {{host}}/api/libros/1
+
+### 7. POST libro
+POST {{host}}/api/libros
+Content-Type: application/json
+
+{
+  "titulo": "Fundación",
+  "isbn": "9780553293357",
+  "anioPublicacion": 1951,
+  "autorId": 1,
+  "categoriaId": 1
+}
+
+### 8. PUT libro
+PUT {{host}}/api/libros/1
+Content-Type: application/json
+
+{
+  "titulo": "Fundación (edición revisada)",
+  "isbn": "9780553293357",
+  "anioPublicacion": 1951,
+  "autorId": 1,
+  "categoriaId": 1
+}
+
+### 9. DELETE libro
+DELETE {{host}}/api/libros/1
+
+### 10. POST backup de la BD
+POST {{host}}/api/database/backup
+
+### 11. DELETE vaciar la BD
+DELETE {{host}}/api/database/vaciar

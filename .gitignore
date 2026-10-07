@@ -1,0 +1,14 @@
+node_modules/
+data/
+backups/
+*.db
+coverage/
+
+# Secretos: nunca subir variables de entorno ni llaves SSH
+.env
+.env.*
+*.pem
+*.key
+
+logs/
+*.log
