@@ -4,9 +4,9 @@ const { send, error } = require('./utils/response');
 const app = express();
 app.use(express.json());
 
-// GET /api/health -> estado de la API (lo usan el HEALTHCHECK de Docker y el pipeline al desplegar)
+
 app.get('/api/health', (req, res) => {
-  send(res, 200, [{ status: 'ok', uptime: Math.round(process.uptime()), timestamp: new Date().toISOString() }]);
+  send(res, 200, [{ status: 'ok', mensaje:'Hola esta es la version 2', uptime: Math.round(process.uptime()), timestamp: new Date().toISOString() }]);
 });
 
 app.use('/api/categorias', require('./routes/categorias'));
