@@ -6,7 +6,7 @@ app.use(express.json());
 
 
 app.get('/api/health', (req, res) => {
-  send(res, 200, [{ status: 'ok', mensaje:'Hola esta es la version 2', uptime: Math.round(process.uptime()), timestamp: new Date().toISOString() }]);
+  send(res, 200, [{ status: 'ok', mensaje:'Hola esta es la version 3', uptime: Math.round(process.uptime()), timestamp: new Date().toISOString() }]);
 });
 
 app.use('/api/categorias', require('./routes/categorias'));
