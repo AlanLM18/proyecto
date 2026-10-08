@@ -56,3 +56,6 @@ POST {{host}}/api/database/backup
 
 ### 11. DELETE vaciar la BD
 DELETE {{host}}/api/database/vaciar
+
+### 12. GET health
+GET {{host}}/api/health

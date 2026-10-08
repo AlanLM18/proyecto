@@ -1,6 +1,15 @@
 
 const { app, request, expectSchema } = require('./helpers');
 
+describe('GET /api/health', () => {
+  test('devuelve 200 con status ok', async () => {
+    const res = await request(app).get('/api/health');
+    expectSchema(res, 200);
+    expect(res.body.data[0]).toMatchObject({ status: 'ok' });
+    expect(typeof res.body.data[0].uptime).toBe('number');
+  });
+});
+
 describe('Esquema de respuesta y manejo de errores general', () => {
   test('ERROR: ruta inexistente -> 404 con el mismo esquema { statusCode, data }', async () => {
     const res = await request(app).get('/api/no-existe');

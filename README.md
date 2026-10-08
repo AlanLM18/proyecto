@@ -4,8 +4,8 @@ API REST de una biblioteca construida con **Node.js 22**, **Express 5** y **SQLi
 Cada `push` a `main` ejecuta las pruebas, publica la imagen en **Docker Hub** y la despliega
 automáticamente en una instancia **AWS EC2**.
 
-- **11 endpoints** (ver tabla al final)
-- **51 pruebas** de integración con **Jest + Supertest**, cobertura ≈ **96%** (mínimo exigido: 70%)
+- **12 endpoints** (ver tabla al final)
+- **52 pruebas** de integración con **Jest + Supertest**, cobertura ≈ **96%** (mínimo exigido: 70%)
 - Imagen Docker multi-etapa, usuario sin privilegios y `HEALTHCHECK`
 
 ---
@@ -40,7 +40,7 @@ flowchart LR
 2. **build-and-push** (solo push a `main`): inicia sesión en Docker Hub con un *Personal Access Token*,
    construye la imagen y la publica con las etiquetas `:latest` y `:<sha del commit>`.
 3. **deploy** (solo push a `main`): se conecta a la EC2 por SSH, descarga `:latest`, detiene y elimina
-   el contenedor anterior, levanta el nuevo en el puerto 80 y verifica que la API responde.
+   el contenedor anterior, levanta el nuevo en el puerto 80 y verifica que `GET /api/health` responda.
 
 La imagen nueva se descarga **antes** de detener la anterior, así que la interrupción es de
 uno o dos segundos. Los datos se guardan en los volúmenes `practica3-data` y `practica3-backups`,
@@ -81,7 +81,7 @@ Para probar los endpoints abre `practica3.http` (extensión REST Client de VS Co
 ```bash
 docker build -t practica3-api .
 docker run -d --name practica3-api -p 8080:3000 -v practica3-data:/app/data practica3-api
-curl http://localhost:8080/api/categorias
+curl http://localhost:8080/api/health
 ```
 
 | Variable | Valor por defecto | Uso |
@@ -151,7 +151,7 @@ git push -u origin main
 ```
 
 En la pestaña **Actions** se ven los tres jobs. Al terminar, la API responde en
-`http://<IP_EC2>/api/categorias`.
+`http://<IP_EC2>/api/health`.
 
 ### 3.5 Demostración en vivo
 
@@ -164,7 +164,7 @@ En la pestaña **Actions** se ven los tres jobs. Al terminar, la API responde en
 
 ---
 
-## 4. Endpoints (11)
+## 4. Endpoints (12)
 
 | # | Método | Ruta | Descripción |
 |---|--------|------|-------------|
@@ -179,3 +179,4 @@ En la pestaña **Actions** se ven los tres jobs. Al terminar, la API responde en
 | 9 | DELETE | /api/libros/:id | Eliminar libro |
 | 10 | POST | /api/database/backup | Backup de la BD (carpeta `backups/`) |
 | 11 | DELETE | /api/database/vaciar | Vaciar la BD y reiniciar los Id |
+| 12 | GET | /api/health | Estado de la API (HEALTHCHECK y pipeline) |
