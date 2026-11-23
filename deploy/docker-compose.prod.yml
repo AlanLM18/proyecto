@@ -3,6 +3,13 @@
 # Las variables vienen del archivo .env que genera el pipeline con los GitHub Secrets.
 name: biblioteca
 
+# Rotación de logs de Docker para no llenar el disco de la EC2
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # ---------------- Aplicación ----------------
   api:
@@ -22,6 +29,7 @@ services:
       - practica3-backups:/app/backups
     depends_on:
       - openobserve
+    logging: *logging
     restart: unless-stopped
     mem_limit: 256m
 
@@ -31,6 +39,7 @@ services:
       - "80:80"
     depends_on:
       - api
+    logging: *logging
     restart: unless-stopped
     mem_limit: 64m
 
@@ -43,12 +52,15 @@ services:
       ZO_DATA_DIR: /data
       ZO_MEMORY_CACHE_MAX_SIZE: "128"
       ZO_TELEMETRY: "false"
+      # Conserva 7 días de datos para no llenar el disco
+      ZO_COMPACT_DATA_RETENTION_DAYS: "7"
       # Permite que las alertas llamen al webhook interno de la API (http://api:3000)
       ZO_SSRF_ALLOWED_HOSTS: api
     ports:
       - "5080:5080"
     volumes:
       - openobserve-data:/data
+    logging: *logging
     restart: unless-stopped
     mem_limit: 640m
 
@@ -69,6 +81,7 @@ services:
       - /:/hostfs:ro
     depends_on:
       - openobserve
+    logging: *logging
     restart: unless-stopped
     mem_limit: 64m
 
