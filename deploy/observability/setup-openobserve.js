@@ -109,6 +109,11 @@ const dashboard = (titulo, descripcion, panels, periodo = '1h') => ({
 });
 
 const T = { label: 'Tiempo', col: 'x' };
+
+// Fechas de las tablas en horario del centro de México (UTC-6, sin horario de verano desde 2022).
+// Las gráficas ya se muestran en la zona horaria del navegador; las tablas no, por eso se convierte aquí.
+const DESFASE_MX_US = 6 * 3600 * 1e6;
+const fechaMx = (expr) => `to_char(to_timestamp_micros(${expr} - ${DESFASE_MX_US}), '%Y-%m-%d %H:%M:%S')`;
 const H = "histogram(_timestamp, '1 minute')";
 
 // ---------------------------------------------------------------- 1) Infraestructura
@@ -191,7 +196,7 @@ const dashApp = dashboard(
     }),
     panel({
       tipo: 'table', titulo: 'Resumen por endpoint', stream: 'biblioteca_api', pos: [0, 23, 48, 9],
-      sql: `SELECT method AS metodo, route AS endpoint, count(*) AS peticiones, round(avg(duration_ms), 2) AS latencia_prom_ms, round(approx_percentile_cont(duration_ms, 0.95), 2) AS latencia_p95_ms, sum(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS errores, max(to_timestamp_micros(_timestamp)) AS ultima_peticion ${REQ} GROUP BY metodo, endpoint ORDER BY peticiones DESC`,
+      sql: `SELECT method AS metodo, route AS endpoint, count(*) AS peticiones, round(avg(duration_ms), 2) AS latencia_prom_ms, round(approx_percentile_cont(duration_ms, 0.95), 2) AS latencia_p95_ms, sum(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS errores, ${fechaMx("max(_timestamp)")} AS ultima_peticion ${REQ} GROUP BY metodo, endpoint ORDER BY peticiones DESC`,
       x: [{ label: 'Método', col: 'metodo' }, { label: 'Endpoint', col: 'endpoint' }],
       y: [{ label: 'Peticiones', col: 'peticiones' }, { label: 'Latencia prom. (ms)', col: 'latencia_prom_ms' }, { label: 'Latencia p95 (ms)', col: 'latencia_p95_ms' }, { label: 'Errores', col: 'errores' }, { label: 'Última petición', col: 'ultima_peticion' }],
     }),
@@ -208,13 +213,13 @@ const dashApp = dashboard(
     }),
     panel({
       tipo: 'table', titulo: 'Últimas peticiones HTTP (timestamp, método, ruta, statusCode, tiempo de respuesta)', stream: 'biblioteca_api', pos: [0, 42, 48, 10],
-      sql: `SELECT to_timestamp_micros(_timestamp) AS fecha, method AS metodo, path AS ruta, status_code AS status, duration_ms AS tiempo_ms, trace_id ${REQ} ORDER BY _timestamp DESC LIMIT 50`,
+      sql: `SELECT ${fechaMx("_timestamp")} AS fecha, method AS metodo, path AS ruta, status_code AS status, duration_ms AS tiempo_ms, trace_id ${REQ} ORDER BY _timestamp DESC LIMIT 50`,
       x: [{ label: 'Fecha', col: 'fecha' }, { label: 'Método', col: 'metodo' }, { label: 'Ruta', col: 'ruta' }, { label: 'statusCode', col: 'status' }],
       y: [{ label: 'Tiempo (ms)', col: 'tiempo_ms' }, { label: 'trace_id', col: 'trace_id' }],
     }),
     panel({
       tipo: 'table', titulo: 'Excepciones y eventos de error', stream: 'biblioteca_api', pos: [0, 52, 48, 9],
-      sql: `SELECT to_timestamp_micros(_timestamp) AS fecha, severity AS nivel, event AS evento, path AS ruta, status_code AS status FROM ${API} WHERE severity IN ('ERROR', 'WARN') AND event != 'alerta_recibida' ORDER BY _timestamp DESC LIMIT 50`,
+      sql: `SELECT ${fechaMx("_timestamp")} AS fecha, severity AS nivel, event AS evento, path AS ruta, status_code AS status FROM ${API} WHERE severity IN ('ERROR', 'WARN') AND event != 'alerta_recibida' ORDER BY _timestamp DESC LIMIT 50`,
       x: [{ label: 'Fecha', col: 'fecha' }, { label: 'Nivel', col: 'nivel' }, { label: 'Evento', col: 'evento' }, { label: 'Ruta', col: 'ruta' }],
       y: [{ label: 'statusCode', col: 'status' }],
     }),
@@ -243,13 +248,13 @@ const dashPipeline = dashboard(
     }),
     panel({
       tipo: 'table', titulo: 'Registro de ejecuciones del pipeline (commit, rama, usuario)', stream: 'cicd_pipeline', pos: [0, 14, 48, 11],
-      sql: `SELECT to_timestamp_micros(_timestamp) AS fecha, event_type AS evento, status AS resultado, branch AS rama, commit_short AS commit, actor AS usuario, jest AS jest, playwright AS playwright, commit_message AS mensaje, run_url AS ejecucion FROM ${PIPE} ORDER BY _timestamp DESC LIMIT 50`,
+      sql: `SELECT ${fechaMx("_timestamp")} AS fecha, event_type AS evento, status AS resultado, branch AS rama, commit_short AS commit, actor AS usuario, jest AS jest, playwright AS playwright, commit_message AS mensaje, run_url AS ejecucion FROM ${PIPE} ORDER BY _timestamp DESC LIMIT 50`,
       x: [{ label: 'Fecha', col: 'fecha' }, { label: 'Evento', col: 'evento' }, { label: 'Resultado', col: 'resultado' }, { label: 'Rama', col: 'rama' }, { label: 'Commit', col: 'commit' }, { label: 'Usuario', col: 'usuario' }],
       y: [{ label: 'Jest', col: 'jest' }, { label: 'Playwright', col: 'playwright' }, { label: 'Mensaje', col: 'mensaje' }, { label: 'Ejecución', col: 'ejecucion' }],
     }),
     panel({
       tipo: 'table', titulo: 'Alertas operativas disparadas', stream: 'biblioteca_api', pos: [0, 25, 48, 9],
-      sql: `SELECT to_timestamp_micros(_timestamp) AS fecha, alerta, stream, conteo FROM ${API} WHERE event = 'alerta_recibida' ORDER BY _timestamp DESC LIMIT 50`,
+      sql: `SELECT ${fechaMx("_timestamp")} AS fecha, alerta, stream, conteo FROM ${API} WHERE event = 'alerta_recibida' ORDER BY _timestamp DESC LIMIT 50`,
       x: [{ label: 'Fecha', col: 'fecha' }, { label: 'Alerta', col: 'alerta' }, { label: 'Stream', col: 'stream' }],
       y: [{ label: 'Conteo', col: 'conteo' }],
     }),
