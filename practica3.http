@@ -59,3 +59,40 @@ DELETE {{host}}/api/database/vaciar
 
 ### 12. GET health
 GET {{host}}/api/health
+
+### 13. POST login (devuelve el token)
+# @name login
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "admin@biblioteca.com", "password": "Admin123!" }
+
+### 14. GET usuario de la sesión
+GET {{host}}/api/auth/me
+Authorization: Bearer {{login.response.body.data[0].token}}
+
+### 15. GET usuarios
+GET {{host}}/api/usuarios
+Authorization: Bearer {{login.response.body.data[0].token}}
+
+### 16. GET usuario por id
+GET {{host}}/api/usuarios/1
+Authorization: Bearer {{login.response.body.data[0].token}}
+
+### 17. POST usuario
+POST {{host}}/api/usuarios
+Authorization: Bearer {{login.response.body.data[0].token}}
+Content-Type: application/json
+
+{ "nombre": "Ana Pérez", "email": "ana@biblioteca.com", "password": "secreta1", "rol": "editor" }
+
+### 18. PUT usuario
+PUT {{host}}/api/usuarios/2
+Authorization: Bearer {{login.response.body.data[0].token}}
+Content-Type: application/json
+
+{ "nombre": "Ana Pérez López", "email": "ana@biblioteca.com", "rol": "admin" }
+
+### 19. DELETE usuario
+DELETE {{host}}/api/usuarios/2
+Authorization: Bearer {{login.response.body.data[0].token}}

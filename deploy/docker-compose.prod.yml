@@ -1,0 +1,82 @@
+# Producción en AWS EC2. El pipeline copia esta carpeta a ~/biblioteca y ejecuta:
+#   docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d
+# Las variables vienen del archivo .env que genera el pipeline con los GitHub Secrets.
+name: biblioteca
+
+services:
+  # ---------------- Aplicación ----------------
+  api:
+    image: ${DOCKERHUB_USERNAME}/webapp:latest
+    environment:
+      NODE_ENV: production
+      APP_VERSION: ${APP_VERSION:-latest}
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@biblioteca.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      OPENOBSERVE_URL: http://openobserve:5080
+      OPENOBSERVE_USER: ${OPENOBSERVE_USER}
+      OPENOBSERVE_PASSWORD: ${OPENOBSERVE_PASSWORD}
+      ALERT_WEBHOOK_TOKEN: ${ALERT_WEBHOOK_TOKEN}
+    volumes:
+      - practica3-data:/app/data
+      - practica3-backups:/app/backups
+    depends_on:
+      - openobserve
+    restart: unless-stopped
+    mem_limit: 256m
+
+  frontend:
+    image: ${DOCKERHUB_USERNAME}/webapp-frontend:latest
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+    mem_limit: 64m
+
+  # ---------------- Observabilidad ----------------
+  openobserve:
+    image: public.ecr.aws/zinclabs/openobserve:${OPENOBSERVE_VERSION:-latest}
+    environment:
+      ZO_ROOT_USER_EMAIL: ${OPENOBSERVE_USER}
+      ZO_ROOT_USER_PASSWORD: ${OPENOBSERVE_PASSWORD}
+      ZO_DATA_DIR: /data
+      ZO_MEMORY_CACHE_MAX_SIZE: "128"
+      ZO_TELEMETRY: "false"
+      # Permite que las alertas llamen al webhook interno de la API (http://api:3000)
+      ZO_SSRF_ALLOWED_HOSTS: api
+    ports:
+      - "5080:5080"
+    volumes:
+      - openobserve-data:/data
+    restart: unless-stopped
+    mem_limit: 640m
+
+  # Agente de infraestructura: CPU, RAM, red (ancho de banda), disco y temperatura del host EC2
+  infra-agent:
+    image: node:22-alpine
+    command: ["node", "/agent/agent.js"]
+    environment:
+      OPENOBSERVE_URL: http://openobserve:5080
+      OPENOBSERVE_USER: ${OPENOBSERVE_USER}
+      OPENOBSERVE_PASSWORD: ${OPENOBSERVE_PASSWORD}
+      HOST_NAME: ${HOST_NAME:-ec2-biblioteca}
+      INTERVALO_SEGUNDOS: "10"
+    volumes:
+      - ./infra-agent:/agent:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/hostfs:ro
+    depends_on:
+      - openobserve
+    restart: unless-stopped
+    mem_limit: 64m
+
+volumes:
+  # Se reutilizan los volúmenes del Parcial 1 para no perder la base de datos
+  practica3-data:
+    name: practica3-data
+  practica3-backups:
+    name: practica3-backups
+  openobserve-data:
+    name: openobserve-data

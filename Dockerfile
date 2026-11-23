@@ -1,4 +1,4 @@
-# ---------- Práctica 3: imagen Docker de la API (Node.js + SQLite) ----------
+# ---------- Parcial 2: imagen Docker de la API (Node.js + SQLite + OpenTelemetry) ----------
 # Construcción en dos etapas: la primera instala dependencias y la segunda
 # solo copia lo necesario para ejecutar (imagen final más pequeña).
 
@@ -14,8 +14,12 @@ RUN npm ci --omit=dev && npm cache clean --force
 # ===== Etapa 2: imagen final =====
 FROM node:22-slim
 
+# Versión (hash del commit) que muestra /api/health y que se adjunta a la telemetría
+ARG APP_VERSION=dev
+
 # La app escucha en el puerto 3000 dentro del contenedor (en EC2: docker run -p 80:3000)
 ENV NODE_ENV=production \
+    APP_VERSION=${APP_VERSION} \
     PORT=3000 \
     SOCKET_PORT=6061
 

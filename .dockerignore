@@ -37,3 +37,13 @@ Dockerfile
 
 # Reporte (LaTeX y capturas)
 reporte
+
+# Frontend, pruebas E2E y archivos de despliegue (tienen su propia imagen/configuración)
+frontend
+e2e
+deploy
+playwright-report
+test-results
+playwright.config.js
+docker-compose*.yml
+observability

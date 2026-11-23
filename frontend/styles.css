@@ -1,0 +1,96 @@
+:root {
+  --fondo: #f3f5f9;
+  --superficie: #ffffff;
+  --borde: #e2e6ee;
+  --texto: #1b2230;
+  --tenue: #667085;
+  --primario: #2563eb;
+  --primario-hover: #1d4ed8;
+  --peligro: #dc2626;
+  --exito: #16a34a;
+  --radio: 10px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--texto);
+  background: var(--fondo);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: var(--fondo); }
+h1, h2 { margin: 0 0 .75rem; }
+h1 { font-size: 1.5rem; }
+h2 { font-size: 1.05rem; }
+[hidden] { display: none !important; }
+.tenue { color: var(--tenue); margin: 0; font-size: .9rem; }
+
+/* ---------- Componentes ---------- */
+.tarjeta {
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  padding: 1.25rem;
+  box-shadow: 0 1px 2px rgb(16 24 40 / .05);
+}
+
+label { display: flex; flex-direction: column; gap: .3rem; font-size: .85rem; font-weight: 600; margin-bottom: .8rem; }
+input, select {
+  font: inherit; font-weight: 400; padding: .55rem .7rem;
+  border: 1px solid var(--borde); border-radius: 8px; background: #fff; color: var(--texto);
+}
+input:focus, select:focus { outline: 2px solid var(--primario); outline-offset: -1px; }
+
+.boton { font: inherit; font-weight: 600; border-radius: 8px; padding: .55rem 1rem; cursor: pointer; border: 1px solid transparent; }
+.boton--primario { background: var(--primario); color: #fff; }
+.boton--primario:hover { background: var(--primario-hover); }
+.boton--fantasma { background: transparent; border-color: var(--borde); color: var(--texto); }
+.boton--fantasma:hover { background: var(--fondo); }
+.boton--chico { padding: .3rem .6rem; font-size: .8rem; }
+.boton--peligro { background: transparent; color: var(--peligro); border-color: #fecaca; }
+.boton--peligro:hover { background: #fef2f2; }
+
+.alerta { margin: 0 0 1rem; padding: .7rem 1rem; border-radius: 8px; background: #eff6ff; color: #1e40af; font-size: .9rem; }
+.alerta--error { background: #fef2f2; color: #991b1b; }
+.alerta--exito { background: #f0fdf4; color: #166534; }
+
+/* ---------- Login ---------- */
+.login { min-height: 100vh; display: grid; place-items: center; padding: 1rem; }
+.login__tarjeta { width: min(380px, 100%); display: flex; flex-direction: column; }
+.login__tarjeta .boton { margin-top: .25rem; }
+.pie { margin-top: 1rem; text-align: center; }
+
+.marca { display: flex; align-items: center; gap: .75rem; margin-bottom: 1.25rem; }
+.marca__logo { font-size: 2rem; }
+.marca--chica { margin: 0; gap: .5rem; }
+.marca--chica .marca__logo { font-size: 1.3rem; }
+
+/* ---------- Panel ---------- */
+.app { max-width: 1200px; margin: 0 auto; padding: 0 1rem 2rem; }
+.barra { display: flex; align-items: center; gap: 1rem; padding: 1rem 0; flex-wrap: wrap; }
+.barra__usuario { margin-left: auto; display: flex; align-items: center; gap: .75rem; font-size: .9rem; }
+
+.estado { font-size: .8rem; padding: .25rem .6rem; border-radius: 999px; background: #e5e7eb; color: var(--tenue); }
+.estado--ok { background: #dcfce7; color: #166534; }
+.estado--error { background: #fee2e2; color: #991b1b; }
+
+.pestanas { display: flex; gap: .25rem; border-bottom: 1px solid var(--borde); margin-bottom: 1rem; overflow-x: auto; }
+.pestanas button {
+  font: inherit; font-weight: 600; background: none; border: none; padding: .7rem 1rem; cursor: pointer;
+  color: var(--tenue); border-bottom: 2px solid transparent; white-space: nowrap;
+}
+.pestanas button[aria-selected="true"] { color: var(--primario); border-bottom-color: var(--primario); }
+
+.seccion { display: grid; grid-template-columns: 320px 1fr; gap: 1rem; align-items: start; }
+.formulario .acciones { display: flex; gap: .5rem; }
+.tabla-contenedor { overflow-x: auto; }
+.contador { color: var(--tenue); font-weight: 400; font-size: .85rem; }
+
+table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+th, td { text-align: left; padding: .55rem .6rem; border-bottom: 1px solid var(--borde); }
+th { font-size: .75rem; text-transform: uppercase; letter-spacing: .03em; color: var(--tenue); }
+td.acciones-fila { white-space: nowrap; text-align: right; }
+td.acciones-fila .boton { margin-left: .3rem; }
+.vacio { text-align: center; color: var(--tenue); padding: 1.5rem; }
+.rol { font-size: .75rem; padding: .15rem .5rem; border-radius: 999px; background: #eef2ff; color: #3730a3; }
+
+@media (max-width: 800px) {
+  .seccion { grid-template-columns: 1fr; }
+}

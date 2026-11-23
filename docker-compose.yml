@@ -1,0 +1,28 @@
+# Entorno local y de CI: construye la API y el frontend desde el código.
+#   docker compose up -d --build        -> http://localhost:8080
+# Para enviar telemetría a un OpenObserve local, define OPENOBSERVE_URL/USER/PASSWORD en .env
+services:
+  api:
+    build:
+      context: .
+      args:
+        APP_VERSION: ${APP_VERSION:-local}
+    environment:
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:-cambia-esta-llave-local}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@biblioteca.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!}
+      OPENOBSERVE_URL: ${OPENOBSERVE_URL:-}
+      OPENOBSERVE_USER: ${OPENOBSERVE_USER:-}
+      OPENOBSERVE_PASSWORD: ${OPENOBSERVE_PASSWORD:-}
+      ALERT_WEBHOOK_TOKEN: ${ALERT_WEBHOOK_TOKEN:-}
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped

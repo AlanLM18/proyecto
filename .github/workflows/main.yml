@@ -1,34 +1,39 @@
-name: CI/CD - API Biblioteca
+name: CI/CD - Biblioteca (Parcial 2)
 
-# Se ejecuta en cada push o pull request a main.
-# - Pull request: solo pruebas (CI).
-# - Push a main: pruebas -> imagen en Docker Hub -> despliegue en AWS EC2 (CD).
+# Flujo:
+#   1) test-backend (Jest)  ─┐
+#   2) test-e2e (Playwright) ┴─> 3) report-tests (OpenObserve, SIEMPRE se ejecuta)
+#                             └─> 4) build-and-push (solo si TODAS las pruebas pasan)
+#                                   └─> 5) deploy (SSH a EC2 + evento de despliegue en OpenObserve)
+# Si alguna prueba falla, los jobs 4 y 5 no se ejecutan: no hay conexión SSH a la EC2.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
-# Evita dos despliegues simultáneos: si llega otro push, se cancela el anterior
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  IMAGE_NAME: webapp
-  CONTAINER_NAME: practica3-api
+  IMAGE_API: webapp
+  IMAGE_FRONTEND: webapp-frontend
+  # OpenObserve corre en la EC2 (puerto 5080). Si se define el secret OPENOBSERVE_URL se usa ese.
+  OPENOBSERVE_URL: ${{ secrets.OPENOBSERVE_URL != '' && secrets.OPENOBSERVE_URL || format('http://{0}:5080', secrets.EC2_HOST) }}
+  OPENOBSERVE_USER: ${{ secrets.OPENOBSERVE_USER }}
+  OPENOBSERVE_PASSWORD: ${{ secrets.OPENOBSERVE_PASSWORD }}
 
 jobs:
-  # ===================== 1) Integración continua =====================
-  test:
-    name: Pruebas y cobertura
+  # ===================== 1) Pruebas de backend (Jest + Supertest) =====================
+  test-backend:
+    name: Backend - Jest
     runs-on: ubuntu-latest
     steps:
-      - name: Descargar el código
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configurar Node.js 22
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
@@ -47,7 +52,7 @@ jobs:
             const t = require('./coverage/coverage-summary.json').total;
             const filas = ['statements','branches','functions','lines']
               .map(k => '| ' + k + ' | ' + t[k].pct + '% | ' + t[k].covered + '/' + t[k].total + ' |');
-            const md = ['## Cobertura de código', '', '| Métrica | % | Cubierto |', '|---|---|---|', ...filas].join('\n');
+            const md = ['## Cobertura de código (Jest)', '', '| Métrica | % | Cubierto |', '|---|---|---|', ...filas].join('\n');
             console.log(md);
             require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, md + '\n');
           "
@@ -60,85 +65,194 @@ jobs:
           path: coverage/
           retention-days: 7
 
-  # ===================== 2) Imagen en Docker Hub =====================
-  build-and-push:
-    name: Construir y publicar imagen
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  # ===================== 2) Pruebas E2E (Playwright: frontend + backend) =====================
+  test-e2e:
+    name: E2E - Playwright
     runs-on: ubuntu-latest
     steps:
-      - name: Descargar el código
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configurar Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Instalar navegador de Playwright
+        run: npx playwright install --with-deps chromium
+
+      # Se prueban los MISMOS contenedores que se publicarán (nginx + API)
+      - name: Levantar frontend y API con docker compose
+        run: docker compose up -d --build --wait
+        env:
+          APP_VERSION: ${{ github.sha }}
+
+      - name: Verificar /api/health
+        run: curl -fsS http://localhost:8080/api/health
+
+      - name: Ejecutar pruebas Playwright
+        run: npx playwright test
+        env:
+          CI: true
+          BASE_URL: http://localhost:8080
+
+      - name: Resumen de Playwright
+        if: always()
+        run: |
+          node -e "
+            const fs = require('fs');
+            if (!fs.existsSync('test-results/resultados.json')) process.exit(0);
+            const s = require('./test-results/resultados.json').stats;
+            const md = ['## Pruebas E2E (Playwright)', '', '| Resultado | Cantidad |', '|---|---|',
+              '| ✅ Exitosas | ' + s.expected + ' |', '| ❌ Fallidas | ' + s.unexpected + ' |',
+              '| ⚠️ Inestables | ' + s.flaky + ' |', '| ⏭️ Omitidas | ' + s.skipped + ' |',
+              '| ⏱️ Duración | ' + (s.duration/1000).toFixed(1) + ' s |'].join('\n');
+            console.log(md);
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, md + '\n');
+          "
+
+      - name: Logs de los contenedores (si falló)
+        if: failure()
+        run: docker compose logs --tail 100
+
+      - name: Guardar reporte de Playwright
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Detener contenedores
+        if: always()
+        run: docker compose down -v
+
+  # ===================== 3) Registro del resultado de las pruebas en OpenObserve =====================
+  report-tests:
+    name: Registrar pruebas en OpenObserve
+    needs: [test-backend, test-e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enviar resultado (commit, rama, usuario) a OpenObserve
+        run: node deploy/observability/send-pipeline-event.js
+        env:
+          EVENT_TYPE: pruebas
+          STATUS: ${{ (needs.test-backend.result == 'success' && needs.test-e2e.result == 'success') && 'success' || 'failure' }}
+          JEST: ${{ needs.test-backend.result }}
+          PLAYWRIGHT: ${{ needs.test-e2e.result }}
+
+      - name: Despliegue bloqueado
+        if: needs.test-backend.result != 'success' || needs.test-e2e.result != 'success'
+        run: |
+          echo "## 🚫 Despliegue bloqueado" >> "$GITHUB_STEP_SUMMARY"
+          echo "Las pruebas fallaron (Jest: ${{ needs.test-backend.result }}, Playwright: ${{ needs.test-e2e.result }})." >> "$GITHUB_STEP_SUMMARY"
+          echo "No se construyen imágenes ni se abre la conexión SSH hacia AWS EC2." >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::Pruebas fallidas: despliegue bloqueado"
+          exit 1
+
+  # ===================== 4) Imágenes en Docker Hub =====================
+  build-and-push:
+    name: Construir y publicar imágenes
+    needs: [test-backend, test-e2e]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
 
       # Autenticación con Personal Access Token (nunca con la contraseña)
-      - name: Iniciar sesión en Docker Hub
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Construir y publicar (:latest y :sha)
+      - name: API (node:22-slim) -> :latest y :sha
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
+          build-args: APP_VERSION=${{ github.sha }}
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_API }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_API }}:${{ github.sha }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
 
-  # ===================== 3) Despliegue continuo en EC2 =====================
+      - name: Frontend (nginx:alpine) -> :latest y :sha
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_FRONTEND }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+  # ===================== 5) Despliegue continuo en EC2 =====================
   deploy:
     name: Desplegar en AWS EC2
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Actualizar el contenedor en EC2 por SSH
-        uses: appleboy/ssh-action@v1
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
+      - uses: actions/checkout@v4
+
+      - name: Copiar archivos de despliegue a la EC2
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: DOCKERHUB_USERNAME,DOCKERHUB_TOKEN,IMAGE_NAME,CONTAINER_NAME
-          script: |
-            set -e
-            IMAGE="$DOCKERHUB_USERNAME/$IMAGE_NAME:latest"
+          source: deploy/*
+          target: biblioteca
+          strip_components: 1
 
-            # 1) Descargar la versión más reciente ANTES de detener la actual (menos tiempo fuera de línea)
-            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
-            docker pull "$IMAGE"
-            docker logout
+      - name: Actualizar contenedores en la EC2 por SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          APP_VERSION: ${{ github.sha }}
+          OPENOBSERVE_USER: ${{ secrets.OPENOBSERVE_USER }}
+          OPENOBSERVE_PASSWORD: ${{ secrets.OPENOBSERVE_PASSWORD }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 15m
+          envs: DOCKERHUB_USERNAME,DOCKERHUB_TOKEN,APP_VERSION,OPENOBSERVE_USER,OPENOBSERVE_PASSWORD,ADMIN_PASSWORD
+          script: bash ~/biblioteca/deploy.sh
 
-            # 2) Detener y eliminar el contenedor anterior
-            docker stop "$CONTAINER_NAME" 2>/dev/null || true
-            docker rm "$CONTAINER_NAME" 2>/dev/null || true
+      - name: Registrar despliegue en OpenObserve
+        if: always()
+        run: node deploy/observability/send-pipeline-event.js
+        env:
+          EVENT_TYPE: despliegue
+          STATUS: ${{ job.status }}
+          DETALLE: Contenedores actualizados en AWS EC2 (api, frontend, openobserve, infra-agent)
 
-            # 3) Levantar la nueva versión en el puerto 80 (los datos viven en volúmenes y no se pierden)
-            docker run -d --name "$CONTAINER_NAME" \
-              --restart unless-stopped \
-              -p 80:3000 \
-              -v practica3-data:/app/data \
-              -v practica3-backups:/app/backups \
-              "$IMAGE"
+      - name: Configurar dashboards y alertas de OpenObserve
+        if: success()
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 5m
+          script: bash ~/biblioteca/setup-observability.sh
 
-            # 4) Verificar que la nueva versión responde en el puerto 80
-            for i in $(seq 1 20); do
-              if curl -fs http://localhost/api/health > /dev/null; then
-                echo "Despliegue correcto: la API responde en el puerto 80"
-                docker image prune -f
-                exit 0
-              fi
-              sleep 3
-            done
-            echo "La nueva versión no respondió a tiempo"
-            docker logs --tail 50 "$CONTAINER_NAME"
-            exit 1
+      # La IP no se imprime: vive solo en el secret EC2_HOST
+      - name: Resumen del despliegue
+        if: success()
+        run: |
+          echo "## 🚀 Despliegue completado" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Aplicación: http://<EC2_HOST>/  ·  Health: http://<EC2_HOST>/api/health" >> "$GITHUB_STEP_SUMMARY"
+          echo "- OpenObserve: http://<EC2_HOST>:5080  (dashboards y alertas actualizados)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Versión: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"

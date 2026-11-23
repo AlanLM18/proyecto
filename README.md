@@ -1,182 +1,116 @@
-# Práctica 3 – API REST de Biblioteca con CI/CD (Docker + GitHub Actions + AWS EC2)
+# Proyecto Parcial 2 – Biblioteca con CI/CD, Playwright y Observabilidad (OpenObserve)
 
-API REST de una biblioteca construida con **Node.js 22**, **Express 5** y **SQLite** (`better-sqlite3`).
-Cada `push` a `main` ejecuta las pruebas, publica la imagen en **Docker Hub** y la despliega
-automáticamente en una instancia **AWS EC2**.
+Aplicación de biblioteca con **login, CRUD de usuarios y CRUD de productos (libros, autores, categorías)**.
+Cada `push` a `main` ejecuta las pruebas (Jest + Playwright). **Solo si todas pasan** se publican las
+imágenes en Docker Hub y se actualizan los contenedores en **AWS EC2**. Todo el ciclo se registra en
+**OpenObserve**, que también recibe logs, métricas y trazas (OpenTelemetry) de la API y las métricas
+de infraestructura de la instancia.
 
-- **12 endpoints** (ver tabla al final)
-- **52 pruebas** de integración con **Jest + Supertest**, cobertura ≈ **96%** (mínimo exigido: 70%)
-- Imagen Docker multi-etapa, usuario sin privilegios y `HEALTHCHECK`
-
----
+| Pieza | Tecnología | Imagen |
+|---|---|---|
+| Backend | Node.js 22, Express 5, SQLite, OpenTelemetry | `node:22-slim` |
+| Frontend | HTML/CSS/JS + nginx (proxy `/api`) | `nginx:1.27-alpine` |
+| Pruebas | Jest + Supertest (83) · Playwright E2E (16) | — |
+| Observabilidad | OpenObserve + agente de infraestructura | `openobserve`, `node:22-alpine` |
+| CI/CD | GitHub Actions → Docker Hub → EC2 (SSH) | — |
 
 ## 1. Arquitectura
 
 ```mermaid
 flowchart LR
-    Dev[Desarrollador] -- git push --> GH[GitHub<br/>rama main]
-    GH --> CI[Job 1: test<br/>npm ci + Jest + cobertura ≥ 70%]
-    CI --> BP[Job 2: build-and-push<br/>docker build]
-    BP -- PAT --> DH[(Docker Hub<br/>:latest y :sha)]
-    BP --> CD[Job 3: deploy]
-    CD -- SSH .pem --> EC2[AWS EC2 Ubuntu<br/>Docker]
-    DH -- docker pull --> EC2
-    EC2 -- puerto 80 --> Usuario[Cliente HTTP]
+    Dev[Desarrollador] -- git push --> GH[GitHub main]
+    GH --> J[Jest] & P[Playwright]
+    J & P --> R[report-tests] -- HTTP/JSON --> OO
+    J & P -- solo si pasan --> B[build-and-push] --> DH[(Docker Hub)]
+    B --> D[deploy] -- SSH --> EC2
+    D -- evento despliegue --> OO
+    subgraph EC2 [AWS EC2 · docker compose]
+      FE[frontend nginx :80] --> API[api :3000] --> DB[(SQLite)]
+      API -- OTLP logs/métricas/trazas --> OO[OpenObserve :5080]
+      AG[infra-agent] -- CPU/RAM/red/temp --> OO
+      OO -- webhook alertas --> API
+    end
+    DH -- pull --> EC2
 ```
 
-| Componente | Detalle |
-|---|---|
-| Aplicación | Express 5, rutas en `src/routes/`, acceso a datos en `src/db/` |
-| Base de datos | SQLite normalizada (3FN), archivo en `data/practica3.db` (volumen Docker en EC2) |
-| Pruebas | `tests/`, BD en memoria (`DB_PATH=:memory:`), no tocan los datos reales |
-| Contenedor | `Dockerfile` en dos etapas, la app escucha en el puerto 3000 del contenedor |
-| CI/CD | `.github/workflows/main.yml` con 3 jobs: `test` → `build-and-push` → `deploy` |
-| Servidor | EC2 Ubuntu con Docker; el contenedor se publica en el puerto **80** (`-p 80:3000`) |
+### Pipeline (`.github/workflows/main.yml`)
 
-### Flujo del pipeline
+1. **test-backend** – `npm run test:ci` (Jest, cobertura mínima 70%).
+2. **test-e2e** – `docker compose up --build --wait` + `npx playwright test` contra los mismos contenedores.
+3. **report-tests** (siempre) – envía a OpenObserve `status`, commit, rama, usuario y resultado de Jest/Playwright.
+   Si algo falló marca *Despliegue bloqueado* y los jobs siguientes **no se ejecutan (no hay SSH a EC2)**.
+4. **build-and-push** – publica `webapp` y `webapp-frontend` con etiquetas `:latest` y `:<sha>`.
+5. **deploy** – copia `deploy/` a la EC2, ejecuta `deploy.sh` (compose pull/up + verificación de
+   `GET /api/health`), registra el evento de despliegue y crea/actualiza dashboards y alertas.
 
-1. **test** (en push y pull request): instala dependencias, ejecuta `npm run test:ci` y muestra la tabla
-   de cobertura en los logs y en el resumen del job. Si la cobertura baja del 70%, el pipeline falla.
-2. **build-and-push** (solo push a `main`): inicia sesión en Docker Hub con un *Personal Access Token*,
-   construye la imagen y la publica con las etiquetas `:latest` y `:<sha del commit>`.
-3. **deploy** (solo push a `main`): se conecta a la EC2 por SSH, descarga `:latest`, detiene y elimina
-   el contenedor anterior, levanta el nuevo en el puerto 80 y verifica que `GET /api/health` responda.
+### Observabilidad
 
-La imagen nueva se descarga **antes** de detener la anterior, así que la interrupción es de
-uno o dos segundos. Los datos se guardan en los volúmenes `practica3-data` y `practica3-backups`,
-por lo que no se pierden entre despliegues.
-
-### Base de datos (3FN)
-
-- **categorias** (id, nombre)
-- **autores** (id, nombre, nacionalidad)
-- **libros** (id, titulo, isbn, anio_publicacion, autor_id → autores, categoria_id → categorias)
-
-### Formato de respuesta
-
-Todas las respuestas (incluidos los errores) usan el mismo esquema; `data` siempre es un arreglo:
-
-```json
-{ "statusCode": 200, "data": [] }
-```
-
----
-
-## 2. Comandos locales
-
-Requisitos: Node.js 22 o superior (y Docker para probar la imagen).
-
-```bash
-npm install                # instalar dependencias
-npm start                  # API en http://localhost:3000
-npm run dev                # modo desarrollo (se reinicia al guardar)
-npm test                   # pruebas
-npm run test:coverage      # pruebas + reporte de cobertura (carpeta coverage/)
-```
-
-Para probar los endpoints abre `practica3.http` (extensión REST Client de VS Code) o usa Postman.
-
-### Docker
-
-```bash
-docker build -t practica3-api .
-docker run -d --name practica3-api -p 8080:3000 -v practica3-data:/app/data practica3-api
-curl http://localhost:8080/api/health
-```
-
-| Variable | Valor por defecto | Uso |
+| Señal | Origen | Stream en OpenObserve |
 |---|---|---|
-| `PORT` | `3000` | Puerto HTTP |
-| `SOCKET_PORT` | `6061` | Socket TCP de la práctica anterior |
-| `DB_PATH` | `data/practica3.db` | Ruta del archivo SQLite (`:memory:` en pruebas) |
-| `BACKUP_DIR` | `backups/` | Carpeta de los backups |
+| Logs estructurados (peticiones, login, excepciones) | API · OTLP | `biblioteca_api` (logs) |
+| Métricas `http_server_requests_total`, `http_server_errors_total`, `http_server_request_duration_ms` (method, route, status_code) | API · OTLP | metrics |
+| Trazas HTTP → Express → consultas SQLite | API · OTLP | `default` (traces) |
+| CPU, RAM, ancho de banda, disco, temperatura | `deploy/infra-agent` · HTTP/JSON | `infra_metrics` (logs) |
+| Ejecuciones de pruebas y despliegues | GitHub Actions · HTTP/JSON | `cicd_pipeline` (logs) |
+| Alertas disparadas | webhook → API | `biblioteca_api` (`event = alerta_recibida`) |
 
----
+Dashboards: **1. Infraestructura EC2**, **2. Aplicación API (OpenTelemetry)**, **3. Pipeline CI/CD y Alertas**.
+Alertas: CPU > 80%, RAM > 90%, temperatura > 75 °C, errores 5xx, latencia p95 > 1 s, tasa de error > 50%, pipeline fallido.
 
-## 3. Configuración paso a paso
+> Las instancias EC2 virtualizadas normalmente no exponen sensores térmicos; en ese caso el agente reporta
+> una temperatura **estimada** a partir de la carga de CPU y la marca con `temperatura_fuente = estimada`.
 
-### 3.1 Docker Hub
+## 2. Uso local
 
-1. Usar el repositorio de Docker Hub **`webapp`** (si se usa otro nombre, cambiar `IMAGE_NAME` en el workflow).
-2. *Account settings → Personal access tokens → Generate new token* con permiso **Read & Write**.
-   Copiar el token (solo se muestra una vez).
+```bash
+npm install
+npm test                         # Jest (backend)
+docker compose up -d --build     # frontend + API en http://localhost:8080
+npx playwright install chromium  # solo la primera vez
+npm run test:e2e                 # Playwright (frontend + backend)
+```
 
-### 3.2 Instancia AWS EC2
+Usuario inicial: `admin@biblioteca.com` / `Admin123!` (cambiable con `ADMIN_EMAIL` / `ADMIN_PASSWORD`).
 
-1. En la consola de EC2: *Launch instance* → **Ubuntu Server 24.04 LTS**, tipo `t2.micro`/`t3.micro`.
-2. Crear un *key pair* (`.pem`) y descargarlo. **No** lo guardes dentro del repositorio.
-3. *Security Group* con estas reglas de entrada:
+## 3. Configuración en GitHub y AWS
 
-   | Tipo | Puerto | Origen |
-   |---|---|---|
-   | SSH | 22 | 0.0.0.0/0 (GitHub Actions usa IPs variables) |
-   | HTTP | 80 | 0.0.0.0/0 |
-
-4. Conectarse e instalar Docker:
-
-   ```bash
-   ssh -i mi-llave.pem ubuntu@<IP_EC2>
-   sudo apt-get update
-   sudo apt-get install -y docker.io curl
-   sudo systemctl enable --now docker
-   sudo usermod -aG docker ubuntu     # permite usar docker sin sudo
-   exit                               # volver a entrar para aplicar el grupo
-   ```
-
-5. (Recomendado) Asignar una **Elastic IP** para que la IP pública no cambie al reiniciar la instancia.
-
-### 3.3 GitHub Secrets
-
-En el repositorio: *Settings → Secrets and variables → Actions → New repository secret*.
+**GitHub → Settings → Secrets and variables → Actions**
 
 | Secret | Contenido |
 |---|---|
-| `DOCKERHUB_USERNAME` | Usuario de Docker Hub |
-| `DOCKERHUB_TOKEN` | Personal Access Token de Docker Hub |
-| `EC2_HOST` | IP pública (o DNS) de la instancia |
-| `EC2_USER` | `ubuntu` |
-| `EC2_SSH_KEY` | Contenido completo del archivo `.pem` (incluye `-----BEGIN ...` y `-----END ...`) |
+| `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` | Usuario y Personal Access Token (Read & Write) |
+| `EC2_HOST` / `EC2_USER` / `EC2_SSH_KEY` | IP pública, `ubuntu` y contenido del `.pem` |
+| `OPENOBSERVE_USER` | Correo del usuario raíz de OpenObserve (ej. `admin@biblioteca.com`) |
+| `OPENOBSERVE_PASSWORD` | Contraseña de OpenObserve (sin `$`, comillas ni espacios) |
+| `ADMIN_PASSWORD` *(opcional)* | Contraseña inicial del administrador de la app |
+| `OPENOBSERVE_URL` *(opcional)* | Solo si OpenObserve no está en `http://EC2_HOST:5080` |
 
-> Ninguna contraseña, IP, token o llave está en el código: el workflow solo los lee desde `secrets`.
+**Security Group de la EC2 – reglas de entrada:** 22 (SSH), 80 (HTTP) y **5080 (OpenObserve)**.
+Se recomienda una instancia con ≥ 2 GB de RAM; en instancias de 1 GB `deploy.sh` crea 2 GB de swap.
 
-### 3.4 Primer despliegue
+## 4. Demostración de los criterios de aceptación
 
-```bash
-git init
-git add .
-git commit -m "API Biblioteca con CI/CD"
-git branch -M main
-git remote add origin https://github.com/<usuario>/<repositorio>.git
-git push -u origin main
-```
+1. **Commit con error** – p. ej. cambiar en `frontend/index.html` el texto `Iniciar sesión` del botón,
+   o hacer que `GET /api/health` responda 500. Playwright falla → `report-tests` registra
+   `status = failure` en OpenObserve → `build-and-push` y `deploy` se omiten (no hay SSH a EC2).
+2. **Commit válido** – todas las pruebas pasan → imágenes nuevas → contenedores actualizados en EC2 →
+   evento `despliegue/success` en OpenObserve.
+3. **OpenObserve** (`http://<EC2_HOST>:5080`) – logs del pipeline, trazas de cada petición y las gráficas
+   de CPU, ancho de banda, temperatura y RAM.
 
-En la pestaña **Actions** se ven los tres jobs. Al terminar, la API responde en
-`http://<IP_EC2>/api/health`.
+## 5. Endpoints
 
-### 3.5 Demostración en vivo
+| # | Método | Ruta | Auth |
+|---|---|---|---|
+| 1-2 | GET, POST | /api/categorias | — |
+| 3-4 | GET, POST | /api/autores | — |
+| 5-9 | GET, GET/:id, POST, PUT/:id, DELETE/:id | /api/libros | — |
+| 10 | POST | /api/database/backup | — |
+| 11 | DELETE | /api/database/vaciar | — |
+| 12 | GET | **/api/health** | — |
+| 13 | POST | /api/auth/login | — |
+| 14 | GET | /api/auth/me | Bearer |
+| 15-19 | GET, GET/:id, POST, PUT/:id, DELETE/:id | /api/usuarios | Bearer |
+| 20 | POST | /api/alertas/webhook | `x-alert-token` |
 
-1. Cambiar un mensaje de la API, por ejemplo en [src/app.js](src/app.js) el texto
-   `Ruta no encontrada` por `Ruta no encontrada (v2)`.
-2. `git commit -am "Cambio de mensaje" && git push`.
-3. En *Actions* se ve cómo pasan las pruebas, se publica la imagen nueva en Docker Hub y se
-   actualiza la EC2.
-4. `http://<IP_EC2>/api/cualquier-cosa` responde con el mensaje nuevo.
-
----
-
-## 4. Endpoints (12)
-
-| # | Método | Ruta | Descripción |
-|---|--------|------|-------------|
-| 1 | GET | /api/categorias | Listar categorías |
-| 2 | POST | /api/categorias | Crear categoría |
-| 3 | GET | /api/autores | Listar autores |
-| 4 | POST | /api/autores | Crear autor |
-| 5 | GET | /api/libros | Listar libros (con autor y categoría) |
-| 6 | GET | /api/libros/:id | Obtener un libro |
-| 7 | POST | /api/libros | Crear libro |
-| 8 | PUT | /api/libros/:id | Actualizar libro |
-| 9 | DELETE | /api/libros/:id | Eliminar libro |
-| 10 | POST | /api/database/backup | Backup de la BD (carpeta `backups/`) |
-| 11 | DELETE | /api/database/vaciar | Vaciar la BD y reiniciar los Id |
-| 12 | GET | /api/health | Estado de la API (HEALTHCHECK y pipeline) |
+Todas las respuestas usan `{ "statusCode": 200, "data": [] }`.

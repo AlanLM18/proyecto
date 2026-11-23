@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Biblioteca · Panel</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%232563eb' d='M4 4h6a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4zm16 0h-6a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h7z'/></svg>" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ==================== LOGIN ==================== -->
+  <main id="vista-login" class="login" data-testid="vista-login">
+    <form id="form-login" class="tarjeta login__tarjeta" novalidate>
+      <div class="marca">
+        <span class="marca__logo" aria-hidden="true">📚</span>
+        <div>
+          <h1>Biblioteca</h1>
+          <p class="tenue">Panel de administración</p>
+        </div>
+      </div>
+      <label>Correo electrónico
+        <input type="email" name="email" data-testid="login-email" autocomplete="username" required />
+      </label>
+      <label>Contraseña
+        <input type="password" name="password" data-testid="login-password" autocomplete="current-password" required />
+      </label>
+      <p class="alerta alerta--error" id="login-error" data-testid="login-error" hidden></p>
+      <button type="submit" class="boton boton--primario" data-testid="login-submit">Iniciar sesión</button>
+      <p class="tenue pie" id="estado-login" data-testid="estado-api-login">Verificando API…</p>
+    </form>
+  </main>
+
+  <!-- ==================== PANEL ==================== -->
+  <div id="vista-app" class="app" data-testid="vista-app" hidden>
+    <header class="barra">
+      <div class="marca marca--chica">
+        <span class="marca__logo" aria-hidden="true">📚</span>
+        <strong>Biblioteca</strong>
+      </div>
+      <span class="estado" id="estado-api" data-testid="estado-api">API…</span>
+      <div class="barra__usuario">
+        <span id="usuario-actual" data-testid="usuario-actual"></span>
+        <button class="boton boton--fantasma" id="btn-salir" data-testid="btn-salir">Cerrar sesión</button>
+      </div>
+    </header>
+
+    <nav class="pestanas" role="tablist">
+      <button role="tab" data-tab="libros" data-testid="tab-libros" aria-selected="true">Productos (Libros)</button>
+      <button role="tab" data-tab="autores" data-testid="tab-autores">Autores</button>
+      <button role="tab" data-tab="categorias" data-testid="tab-categorias">Categorías</button>
+      <button role="tab" data-tab="usuarios" data-testid="tab-usuarios">Usuarios</button>
+    </nav>
+
+    <p class="alerta" id="mensaje" data-testid="mensaje" hidden></p>
+
+    <!-- ---------- LIBROS ---------- -->
+    <section class="seccion" id="sec-libros" data-testid="sec-libros">
+      <form id="form-libro" class="tarjeta formulario" novalidate>
+        <h2 id="titulo-form-libro">Nuevo libro</h2>
+        <input type="hidden" name="id" />
+        <label>Título <input name="titulo" data-testid="libro-titulo" required maxlength="200" /></label>
+        <label>ISBN <input name="isbn" data-testid="libro-isbn" required minlength="10" maxlength="20" /></label>
+        <label>Año de publicación <input name="anioPublicacion" type="number" data-testid="libro-anio" min="1000" max="2100" required /></label>
+        <label>Autor <select name="autorId" data-testid="libro-autor" required></select></label>
+        <label>Categoría <select name="categoriaId" data-testid="libro-categoria" required></select></label>
+        <div class="acciones">
+          <button type="submit" class="boton boton--primario" data-testid="libro-guardar">Guardar</button>
+          <button type="button" class="boton boton--fantasma" data-testid="libro-cancelar" data-cancelar="libro">Cancelar</button>
+        </div>
+      </form>
+      <div class="tarjeta tabla-contenedor">
+        <h2>Libros registrados <span class="contador" data-testid="contador-libros"></span></h2>
+        <table data-testid="tabla-libros">
+          <thead><tr><th>Id</th><th>Título</th><th>ISBN</th><th>Año</th><th>Autor</th><th>Categoría</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ---------- AUTORES ---------- -->
+    <section class="seccion" id="sec-autores" data-testid="sec-autores" hidden>
+      <form id="form-autor" class="tarjeta formulario" novalidate>
+        <h2>Nuevo autor</h2>
+        <label>Nombre <input name="nombre" data-testid="autor-nombre" required minlength="2" maxlength="150" /></label>
+        <label>Nacionalidad <input name="nacionalidad" data-testid="autor-nacionalidad" maxlength="80" /></label>
+        <div class="acciones"><button type="submit" class="boton boton--primario" data-testid="autor-guardar">Guardar</button></div>
+      </form>
+      <div class="tarjeta tabla-contenedor">
+        <h2>Autores <span class="contador" data-testid="contador-autores"></span></h2>
+        <table data-testid="tabla-autores"><thead><tr><th>Id</th><th>Nombre</th><th>Nacionalidad</th></tr></thead><tbody></tbody></table>
+      </div>
+    </section>
+
+    <!-- ---------- CATEGORÍAS ---------- -->
+    <section class="seccion" id="sec-categorias" data-testid="sec-categorias" hidden>
+      <form id="form-categoria" class="tarjeta formulario" novalidate>
+        <h2>Nueva categoría</h2>
+        <label>Nombre <input name="nombre" data-testid="categoria-nombre" required minlength="2" maxlength="100" /></label>
+        <div class="acciones"><button type="submit" class="boton boton--primario" data-testid="categoria-guardar">Guardar</button></div>
+      </form>
+      <div class="tarjeta tabla-contenedor">
+        <h2>Categorías <span class="contador" data-testid="contador-categorias"></span></h2>
+        <table data-testid="tabla-categorias"><thead><tr><th>Id</th><th>Nombre</th></tr></thead><tbody></tbody></table>
+      </div>
+    </section>
+
+    <!-- ---------- USUARIOS ---------- -->
+    <section class="seccion" id="sec-usuarios" data-testid="sec-usuarios" hidden>
+      <form id="form-usuario" class="tarjeta formulario" novalidate>
+        <h2 id="titulo-form-usuario">Nuevo usuario</h2>
+        <input type="hidden" name="id" />
+        <label>Nombre <input name="nombre" data-testid="usuario-nombre" required minlength="2" maxlength="100" /></label>
+        <label>Correo <input name="email" type="email" data-testid="usuario-email" required /></label>
+        <label>Contraseña <input name="password" type="password" data-testid="usuario-password" minlength="6" placeholder="Mínimo 6 caracteres" /></label>
+        <label>Rol
+          <select name="rol" data-testid="usuario-rol">
+            <option value="editor">Editor</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </label>
+        <div class="acciones">
+          <button type="submit" class="boton boton--primario" data-testid="usuario-guardar">Guardar</button>
+          <button type="button" class="boton boton--fantasma" data-testid="usuario-cancelar" data-cancelar="usuario">Cancelar</button>
+        </div>
+      </form>
+      <div class="tarjeta tabla-contenedor">
+        <h2>Usuarios <span class="contador" data-testid="contador-usuarios"></span></h2>
+        <table data-testid="tabla-usuarios"><thead><tr><th>Id</th><th>Nombre</th><th>Correo</th><th>Rol</th><th></th></tr></thead><tbody></tbody></table>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
