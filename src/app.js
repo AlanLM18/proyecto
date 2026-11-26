@@ -13,7 +13,7 @@ app.get('/api/health', (req, res) => {
   send(res, 200, [
     {
       status: 'ok',
-      mensaje: 'Hola esta es la version 3',
+      mensaje: 'Hola esta es la version 4, del proyecto del 2do parcial',
       version: process.env.APP_VERSION || 'dev',
       uptime: Math.round(process.uptime()),
       timestamp: new Date().toISOString(),
