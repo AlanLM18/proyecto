@@ -10,6 +10,8 @@ x-logging: &logging
     max-size: "10m"
     max-file: "3"
 
+# Límites de memoria: suman ~690 MB para dejar RAM libre al sistema en una t3.micro (911 MB).
+# Si un contenedor los rebasa, Docker lo reinicia en lugar de congelar todo el servidor.
 services:
   # ---------------- Aplicación ----------------
   api:
@@ -31,7 +33,7 @@ services:
       - openobserve
     logging: *logging
     restart: unless-stopped
-    mem_limit: 256m
+    mem_limit: 192m
 
   frontend:
     image: ${DOCKERHUB_USERNAME}/webapp-frontend:latest
@@ -41,7 +43,7 @@ services:
       - api
     logging: *logging
     restart: unless-stopped
-    mem_limit: 64m
+    mem_limit: 48m
 
   # ---------------- Observabilidad ----------------
   openobserve:
@@ -50,7 +52,7 @@ services:
       ZO_ROOT_USER_EMAIL: ${OPENOBSERVE_USER}
       ZO_ROOT_USER_PASSWORD: ${OPENOBSERVE_PASSWORD}
       ZO_DATA_DIR: /data
-      ZO_MEMORY_CACHE_MAX_SIZE: "128"
+      ZO_MEMORY_CACHE_MAX_SIZE: "64"
       ZO_TELEMETRY: "false"
       # Conserva 7 días de datos para no llenar el disco
       ZO_COMPACT_DATA_RETENTION_DAYS: "7"
@@ -62,7 +64,7 @@ services:
       - openobserve-data:/data
     logging: *logging
     restart: unless-stopped
-    mem_limit: 640m
+    mem_limit: 400m
 
   # Agente de infraestructura: CPU, RAM, red (ancho de banda), disco y temperatura del host EC2
   infra-agent:
@@ -83,7 +85,7 @@ services:
       - openobserve
     logging: *logging
     restart: unless-stopped
-    mem_limit: 64m
+    mem_limit: 48m
 
 volumes:
   # Se reutilizan los volúmenes del Parcial 1 para no perder la base de datos

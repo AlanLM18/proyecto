@@ -35,14 +35,14 @@ sudo apt-get clean >/dev/null 2>&1 || true
 sudo journalctl --vacuum-size=50M >/dev/null 2>&1 || true
 df -h /
 
-echo "==> 3) Memoria swap (solo si hay RAM limitada y suficiente disco libre)"
+echo "==> 3) Memoria swap (imprescindible en instancias de 1 GB: sin swap el servidor se congela)"
 # Una ejecución anterior pudo crear un swap de 2 GB: se reduce a 1 GB para liberar disco
 if [ -f /swapfile ] && [ "$(stat -c %s /swapfile)" -gt 1200000000 ]; then
   sudo swapoff /swapfile || true
   sudo rm -f /swapfile
 fi
 LIBRE_KB=$(df --output=avail / | tail -1)
-if [ -z "$(swapon --show)" ] && [ "$(awk '/MemTotal/{print $2}' /proc/meminfo)" -lt 3000000 ] && [ "$LIBRE_KB" -gt 4000000 ]; then
+if [ -z "$(swapon --show)" ] && [ "$(awk '/MemTotal/{print $2}' /proc/meminfo)" -lt 3000000 ] && [ "$LIBRE_KB" -gt 1500000 ]; then
   sudo fallocate -l 1G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
   grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 fi
